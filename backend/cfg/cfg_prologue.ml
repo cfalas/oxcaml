@@ -29,14 +29,27 @@ let instr_uses_stack_slots (instr : _ Cfg.instruction) =
 
 module Instruction_requirements = struct
   type t =
+    (* This instruction does not use the stack, so it doesn't matter if there's
+       a prologue on the stack or not*)
     | No_requirements
+      (* This instruction uses the stack, either through stack slots or as a
+         call, and hence requires a prologue to already be on the stack. *)
     | Requires_prologue
+      (* This instruction must only occur when there's no prologue on the stack.
+         This is the case for [Return] and tailcalls. Any instruction with this
+         requirement must either in an execution path where there's no prologue,
+         or occur after the epilogue.
+
+         Only terminators can have this requirement. *)
     | Requires_no_prologue
 
+  (* [Prologue] and [Epilogue] instructions will always be treated differently
+     than other instructions (as they affect the state) and hence don't get
+     requirements. *)
   type or_prologue =
-    | Requirements of t
     | Prologue
     | Epilogue
+    | Requirements of t
 
   let terminator (instr : Cfg.terminator Cfg.instruction) fun_name =
     if instr_uses_stack_slots instr
