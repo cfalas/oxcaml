@@ -221,11 +221,25 @@ let add_prologue_if_required : Cfg_with_layout.t -> Cfg_with_layout.t =
         (DLL.hd prologue_block.body)
         ~default:(terminator_as_basic prologue_block.terminator)
     in
+    let prologue_file =
+      Out_channel.open_gen [Open_append; Open_creat] 0o666
+        "/home/cfalas/local/oxcaml/prologues_shrink_on.txt"
+    in
+    Printf.fprintf prologue_file "%d %s\n"
+      (Label.Tbl.length cfg.blocks)
+      cfg.fun_name;
+    close_out prologue_file;
     DLL.add_begin prologue_block.body
       (Cfg.make_instruction_from_copy next_instr ~desc:Cfg.Prologue
          ~id:(InstructionId.get_and_incr cfg.next_instruction_id)
          ());
     let add_epilogue (block : Cfg.basic_block) =
+      let epilogue_file =
+        Out_channel.open_gen [Open_append; Open_creat] 0o666
+          "/home/cfalas/local/oxcaml/epilogues_shrink_on.txt"
+      in
+      Printf.fprintf epilogue_file "%s\n" cfg.fun_name;
+      close_out epilogue_file;
       let terminator = terminator_as_basic block.terminator in
       DLL.add_end block.body
         (Cfg.make_instruction_from_copy terminator ~desc:Cfg.Epilogue
@@ -252,6 +266,14 @@ let add_prologue_if_required_old : Cfg_with_layout.t -> Cfg_with_layout.t =
   in
   if prologue_required
   then (
+    let prologue_file =
+      Out_channel.open_gen [Open_append; Open_creat] 0o666
+        "/home/cfalas/local/oxcaml/prologues_shrink_off.txt"
+    in
+    Printf.fprintf prologue_file "%d %s\n"
+      (Label.Tbl.length cfg.blocks)
+      cfg.fun_name;
+    close_out prologue_file;
     let terminator_as_basic terminator =
       { terminator with Cfg.desc = Cfg.Prologue }
     in
@@ -265,6 +287,11 @@ let add_prologue_if_required_old : Cfg_with_layout.t -> Cfg_with_layout.t =
          ~id:(InstructionId.get_and_incr cfg.next_instruction_id)
          ());
     let add_epilogue (block : Cfg.basic_block) =
+      let epilogue_file =
+        Out_channel.open_gen [Open_append; Open_creat] 0o666
+          "/home/cfalas/local/oxcaml/epilogues_shrink_off.txt"
+      in
+      Printf.fprintf epilogue_file "%s\n" cfg.fun_name;
       let terminator = terminator_as_basic block.terminator in
       DLL.add_end block.body
         (Cfg.make_instruction_from_copy terminator ~desc:Cfg.Epilogue
