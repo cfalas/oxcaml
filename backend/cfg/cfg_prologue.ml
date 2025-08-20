@@ -209,7 +209,9 @@ let add_prologue_if_required : Cfg_with_layout.t -> Cfg_with_layout.t =
   let loop_infos = Cfg_loop_infos.build cfg doms in
   let prologue_block = find_prologue_block tree cfg doms loop_infos in
   match prologue_block with
-  | None -> cfg_with_layout
+  | None ->
+    Regalloc_utils.save_cfg "cfg_new_without" cfg_with_layout;
+    cfg_with_layout
   | Some prologue_block ->
     assert (can_place_prologue prologue_block cfg doms loop_infos);
     let terminator_as_basic terminator =
@@ -255,6 +257,7 @@ let add_prologue_if_required : Cfg_with_layout.t -> Cfg_with_layout.t =
         | Requires_no_prologue -> add_epilogue block
         | No_requirements | Requires_prologue -> ())
       (descendants cfg prologue_block);
+    Regalloc_utils.save_cfg "cfg_new_with" cfg_with_layout;
     cfg_with_layout
 
 let add_prologue_if_required_old : Cfg_with_layout.t -> Cfg_with_layout.t =
@@ -304,6 +307,7 @@ let add_prologue_if_required_old : Cfg_with_layout.t -> Cfg_with_layout.t =
         with
         | Requires_no_prologue -> add_epilogue block
         | No_requirements | Requires_prologue -> ()));
+  Regalloc_utils.save_cfg "cfg_old" cfg_with_layout;
   cfg_with_layout
 
 module Validator = struct

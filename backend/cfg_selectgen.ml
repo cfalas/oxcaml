@@ -1555,8 +1555,10 @@ module Make (Target : Cfg_selectgen_target_intf.S) = struct
     let fun_contains_calls =
       Sub_cfg.exists_basic_blocks body ~f:Cfg.basic_block_contains_calls
     in
+    if fun_contains_calls then print_string (cfg.fun_name ^ " contains calls\n");
     let cfg = { cfg with fun_contains_calls } in
     let cfg_with_layout = Cfg_with_layout.create cfg ~layout in
+    Regalloc_utils.save_cfg "cfg_after_selectgen" cfg_with_layout;
     (* CR xclerc for xclerc: Regalloc_irc_utils.log_cfg_with_infos ~indent:1
        (Cfg_with_infos.make cfg_with_layout); *)
     Cfg_simplify.run cfg_with_layout
