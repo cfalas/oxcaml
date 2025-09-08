@@ -115,14 +115,14 @@ def add_file_to_row(row: CsvRow) -> CsvRow:
 
 
 def row_summary(row: CsvRow) -> SummaryRow:
-    full_summary = {**strip_units(row), **parse_counters(row["counters"])}
+    full_summary = {**strip_units(row)}
     add_file_to_row(full_summary)
     return {k: v for k, v in full_summary.items() if k in SUMMARY_FIELD_NAMES}
 
 
 def csv_to_summaries(rows: CsvRows) -> Iterable[SummaryRow]:
     counter_rows = [row for row in rows if row["counters"]]
-    return map(row_summary, counter_rows)
+    return map(row_summary, rows)
 
 
 def split_into_number_and_unit(number_string: str) -> (str, Union[int, float]):
