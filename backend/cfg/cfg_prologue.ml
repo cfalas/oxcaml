@@ -515,7 +515,9 @@ let find_prologue_and_epilogues_alt (cfg_with_infos : Cfg_with_infos.t) =
       Profile.record ~accumulate:true "adjust_backward"
         Stack_offset_adjustment_backward.build cfg adjusted_forward backward
     in
-    let blocks = Label.Tbl.copy cfg.blocks in
+    let blocks =
+      Profile.record ~accumulate:true "copy blocks" Label.Tbl.copy cfg.blocks
+    in
     let forward, backward = adjusted_forward, adjusted_backward in
     let prologue_edges, epilogue_edges =
       Profile.record ~accumulate:true "find_edges" Label.Tbl.fold
@@ -558,7 +560,11 @@ let find_prologue_and_epilogues_alt (cfg_with_infos : Cfg_with_infos.t) =
           else prol, epil)
         blocks ([], [])
     in
-    let epilogue_edges = ref (Edge.Set.of_list epilogue_edges) in
+    let epilogue_edges =
+      ref
+        (Profile.record ~accumulate:true "copy_epil_edges" Edge.Set.of_list
+           epilogue_edges)
+    in
     Profile.record ~accumulate:true "push_epilogue_down"
       (fun () ->
         let q = Queue.of_seq (Edge.Set.to_seq !epilogue_edges) in
@@ -589,7 +595,11 @@ let find_prologue_and_epilogues_alt (cfg_with_infos : Cfg_with_infos.t) =
                 succs)
         done)
       ();
-    let prologue_edges = ref (Edge.Set.of_list prologue_edges) in
+    let prologue_edges =
+      ref
+        (Profile.record ~accumulate:true "copy_prol_edges" Edge.Set.of_list
+           prologue_edges)
+    in
     Profile.record ~accumulate:true "push_prologue_up"
       (fun () ->
         let q = Queue.of_seq (Edge.Set.to_seq !prologue_edges) in
