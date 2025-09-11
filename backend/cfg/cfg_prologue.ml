@@ -230,27 +230,16 @@ module Reachable_epilogues = struct
           (fun succ_label ->
             collect succ_label;
             let succ_epilogues = Label.Tbl.find t succ_label in
-            Printf.printf "collecting to %s from %s (%s) \n"
-              (Label.to_string label)
-              (Label.to_string succ_label)
-              (Label.Set.to_string succ_epilogues);
             let new_epilogue =
               if Path_no_more_prologue.needs_prologue prologues_needed label
                  || block.terminator.stack_offset <> 0
-              then 
-                Label.Set.union (Label.Tbl.find t label) succ_epilogues
+              then Label.Set.union (Label.Tbl.find t label) succ_epilogues
               else Label.Set.singleton label
             in
             Label.Tbl.replace t label new_epilogue)
           (Cfg.successor_labels ~normal:true ~exn:true block))
     in
     collect cfg.entry_label;
-    Printf.printf "reachable epilogues: %s\n" cfg.fun_name;
-    Label.Tbl.iter
-      (fun label epilogues ->
-        Printf.printf "%s: %s\n" (Label.to_string label)
-          (Label.Set.to_string epilogues))
-      t;
     t
 
   let from_block (t : t) (label : Label.t) = Label.Tbl.find t label
@@ -446,9 +435,6 @@ let find_prologue_and_epilogues_shrink_wrapped (cfg : Cfg.t) =
     let epilogue_blocks =
       Reachable_epilogues.from_block reachable_epilogues tree.label
     in
-    Printf.printf "visiting %s with epilogues %s\n"
-      (Label.to_string tree.label)
-      (Label.Set.to_string epilogue_blocks);
     (* If the current block needs a prologue, we can't propagate the prologue
        downwards. If all paths eventually need a prologue (i.e. all reachable
        blocks where we would add an epilogue require a prologue at some point on
@@ -486,17 +472,9 @@ let find_prologue_and_epilogues_shrink_wrapped (cfg : Cfg.t) =
           (Label.Set.empty, Label.Set.empty)
           children_prologue_block
       in
-      Printf.printf "trying to push from %s to children %s with epilogues %s\n"
-        (Label.to_string tree.label)
-        (Label.Set.to_string child_prologue_blocks)
-        (Label.Set.to_string child_epilogue_blocks);
       if can_place_prologues child_prologue_blocks cfg doms loop_infos
            child_epilogue_blocks
-      then (
-        Printf.printf "can place prologue at %s with epilogues %s\n"
-          (Label.Set.to_string child_prologue_blocks)
-          (Label.Set.to_string child_epilogue_blocks);
-        child_prologue_blocks, child_epilogue_blocks)
+      then child_prologue_blocks, child_epilogue_blocks
       else Label.Set.singleton tree.label, epilogue_blocks
   in
   (* [Proc.prologue_required] is cheap and should provide an over-estimate of
@@ -734,3 +712,83 @@ let validate : Cfg_with_layout.t -> Cfg_with_layout.t =
       cfg_with_layout
     | Error () -> Misc.fatal_error "Cfg_prologue: dataflow analysis failed")
   | false -> cfg_with_layout
+
+module Weird = struct
+  module T = struct
+    type t =
+      { label : Label.t;
+        has_prol : bool;
+        needs_prol : bool
+      }
+
+    let compare a b =
+      let x = Label.compare a.label b.label in
+      if x = 0
+      then
+        let y = Bool.compare a.has_prol b.has_prol in
+        if y = 0 then Bool.compare a.needs_prol b.needs_prol else y
+      else x
+  end
+
+  include T
+
+  module Map = struct
+    include Map.Make (T)
+  end
+end
+
+let count : Cfg_with_layout.t -> Cfg_with_layout.t =
+ fun cfg_with_layout ->
+  let cfg = Cfg_with_layout.cfg cfg_with_layout in
+  let counts = ref Weird.Map.empty in
+  let rec dfs label full_path has_prol needs_prol =
+    if Weird.Map.mem { label; has_prol; needs_prol } !counts
+    then Weird.Map.find { label; has_prol; needs_prol } !counts
+    else if List.mem label full_path
+    then 0, 0, 0
+    else
+      let block = Cfg.get_block_exn cfg label in
+      let has_prol =
+        has_prol
+        || DLL.exists block.body ~f:(fun instr -> instr.Cfg.desc = Cfg.Prologue)
+      in
+      let needs_prol =
+        needs_prol || prologue_needed_block block ~fun_name:cfg.fun_name
+      in
+      let paths = ref 0 in
+      let prologue_paths = ref 0 in
+      let prologue_needed_paths = ref 0 in
+      let succs = Cfg.successor_labels ~normal:true ~exn:true block in
+      if Label.Set.is_empty succs then paths := 1;
+      if has_prol && Label.Set.is_empty succs then prologue_paths := 1;
+      if needs_prol && Label.Set.is_empty succs then prologue_needed_paths := 1;
+      Label.Set.iter
+        (fun succ_label ->
+          let succ_paths, succ_prologue_paths, succ_prologue_needed =
+            dfs succ_label (label :: full_path) has_prol needs_prol
+          in
+          paths := !paths + succ_paths;
+          prologue_paths := !prologue_paths + succ_prologue_paths;
+          prologue_needed_paths := !prologue_needed_paths + succ_prologue_needed)
+        succs;
+      counts
+        := Weird.Map.add
+             { label; has_prol; needs_prol }
+             (!paths, !prologue_paths, !prologue_needed_paths)
+             !counts;
+      !paths, !prologue_paths, !prologue_needed_paths
+  in
+  let paths, prologue_paths, prologue_needed_paths =
+    dfs (Cfg.entry_label cfg) [] false false
+  in
+  let prologue_file =
+    Out_channel.open_gen [Open_append; Open_creat] 0o666
+      "/home/cfalas/local/pathcount.csv"
+  in
+  let sanitized_fun_name =
+    String.map (function ',' -> '_' | c -> c) cfg.fun_name
+  in
+  Printf.fprintf prologue_file "%s,%d,%d,%d\n" sanitized_fun_name prologue_paths
+    paths prologue_needed_paths;
+  close_out prologue_file;
+  cfg_with_layout
